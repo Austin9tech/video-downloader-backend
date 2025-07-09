@@ -23,6 +23,8 @@ app.get('/fetch', async (req, res) => {
   try {
     const stdout = await ytdlpWrap.execPromise([
       '--no-check-certificates',
+      '--cookies',
+      path.join(__dirname, 'www.youtube.com_cookies.txt'),  // <-- Add this
       '--dump-json',
       '--format',
       'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
