@@ -8,6 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Welcome route at /
+app.get('/', (req, res) => {
+  res.send('✅ Universal Video Downloader API is live! Use /fetch?url=VIDEO_URL');
+});
+
+// Main fetch endpoint
 app.get('/fetch', async (req, res) => {
   const videoUrl = req.query.url;
 
@@ -18,7 +24,7 @@ app.get('/fetch', async (req, res) => {
   console.log(`Processing: ${videoUrl}`);
 
   try {
-    // Use yt-dlp-wrap to get video info
+    // Call yt-dlp-wrap
     const stdout = await ytdlpWrap.execPromise([
       '--no-check-certificates',
       '--dump-json',
@@ -49,19 +55,16 @@ app.get('/fetch', async (req, res) => {
   }
 });
 
+// Utility to clean formats
 function processFormats(info) {
   const formats = (info.formats || [])
     .filter(f => f.url && f.url.startsWith('http'))
     .map(f => {
       let quality = f.format_note ||
-                    (f.height ? `${f.height}p` : null) ||
+                    (f.height ? `${f.height}p` : '') ||
                     (f.quality ? `${f.quality}` : 'Unknown');
 
-      if (quality) {
-        quality = quality.replace(/\(.*\)/, '').trim();
-      } else {
-        quality = 'Unknown';
-      }
+      quality = quality ? quality.replace(/\(.*\)/, '').trim() : 'Unknown';
 
       return {
         quality: quality,
@@ -75,6 +78,7 @@ function processFormats(info) {
       };
     });
 
+  // Fallback direct
   if (formats.length === 0 && info.url) {
     formats.push({
       quality: 'Direct',
@@ -89,16 +93,18 @@ function processFormats(info) {
   return formats;
 }
 
+// Utility to pick best thumbnail
 function getBestThumbnail(info) {
   return info.thumbnail ||
          (info.thumbnails?.sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.url) ||
          null;
 }
 
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`
-  Server running on port ${PORT}
+  ✅ Server running on port ${PORT}
   Ready to process downloads...
   `);
 });
