@@ -1,102 +1,146 @@
 const express = require('express');
 const cors = require('cors');
+const { exec } = require('child_process');
 const path = require('path');
-const YTDlpWrap = require('yt-dlp-wrap').default;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Point to your downloaded yt-dlp binary
-const ytdlpWrap = new YTDlpWrap(path.resolve(__dirname, 'yt-dlp'));
+// Configure for Render deployment
+const isProduction = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 3000;
+
+// Middleware to log requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
+});
+
+// Enhanced yt-dlp command with fallbacks
+const getYTDLPCommand = (url) => {
+  // Try preferred formats first
+  return `yt-dlp --dump-json --no-check-certificates --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" "${url}"`;
+};
 
 app.get('/fetch', async (req, res) => {
-  const videoUrl = req.query.url;
-
-  if (!videoUrl) {
-    return res.status(400).json({ error: 'Missing URL parameter' });
-  }
-
-  console.log(`Processing: ${videoUrl}`);
-
   try {
-    const stdout = await ytdlpWrap.execPromise([
-      '--no-check-certificates',
-      '--dump-json',
-      '--format',
-      'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      videoUrl
-    ]);
+    const videoUrl = req.query.url;
+    
+    if (!videoUrl) {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
 
-    const info = JSON.parse(stdout);
-    const formats = processFormats(info);
+    console.log(`Processing request for: ${videoUrl}`);
 
-    const response = {
-      title: info.title || 'Untitled',
-      author: info.uploader || info.channel || 'Unknown',
-      thumbnail: getBestThumbnail(info),
-      duration: info.duration || 0,
-      formats: formats
-    };
-
-    res.json(response);
-
+    const result = await executeYTDLP(videoUrl);
+    res.json(result);
   } catch (error) {
-    console.error('Error fetching video info:', error);
-    res.status(500).json({
-      error: 'Failed to fetch video info',
-      details: error.message
+    console.error('Error in /fetch:', error);
+    res.status(500).json({ 
+      error: 'Failed to process video',
+      details: isProduction ? undefined : error.message
     });
   }
 });
 
-function processFormats(info) {
-  const formats = (info.formats || [])
-    .filter(f => f.url && f.url.startsWith('http'))
-    .map(f => {
-      let quality = f.format_note ||
-                    (f.height ? `${f.height}p` : null) ||
-                    (f.quality ? `${f.quality}` : 'Unknown');
-
-      if (quality) {
-        quality = quality.replace(/\(.*\)/, '').trim();
-      } else {
-        quality = 'Unknown';
+async function executeYTDLP(url) {
+  return new Promise((resolve, reject) => {
+    const command = getYTDLPCommand(url);
+    
+    exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+      if (error) {
+        console.warn('Command execution warning:', stderr);
+        // Don't reject - we'll try to parse anyway
       }
 
-      return {
-        quality: quality,
-        type: f.ext || 'mp4',
-        size: f.filesize ? (f.filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Unknown',
-        url: f.url,
-        vcodec: f.vcodec,
-        acodec: f.acodec,
-        hasAudio: f.acodec && f.acodec !== 'none',
-        hasVideo: f.vcodec && f.vcodec !== 'none'
-      };
-    });
+      try {
+        const info = JSON.parse(stdout);
+        
+        const formats = processFormats(info);
+        if (formats.length === 0 && info.url) {
+          formats.push(createFallbackFormat(info.url));
+        }
 
-  if (formats.length === 0 && info.url) {
-    formats.push({
-      quality: 'Direct',
-      type: info.url.includes('.mp4') ? 'mp4' : 'm4a',
-      size: 'Unknown',
-      url: info.url,
-      hasAudio: !info.url.includes('.mp4'),
-      hasVideo: info.url.includes('.mp4')
+        resolve({
+          title: info.title || 'Untitled Video',
+          author: info.uploader || info.channel || 'Unknown',
+          thumbnail: getBestThumbnail(info),
+          duration: info.duration || 0,
+          formats: formats
+        });
+      } catch (parseError) {
+        console.error('Parse error:', parseError);
+        reject(new Error('Failed to parse video information'));
+      }
     });
-  }
+  });
+}
 
-  return formats;
+function processFormats(info) {
+  return (info.formats || [])
+    .filter(f => f.url && f.url.startsWith('http'))
+    .map(f => ({
+      quality: cleanQualityString(f),
+      type: f.ext || (f.vcodec === 'none' ? 'm4a' : 'mp4'),
+      size: formatFileSize(f.filesize),
+      url: f.url,
+      hasAudio: f.acodec && f.acodec !== 'none',
+      hasVideo: f.vcodec && f.vcodec !== 'none'
+    }));
+}
+
+function cleanQualityString(format) {
+  if (format.format_note) return format.format_note;
+  if (format.height) return `${format.height}p`;
+  if (format.quality) return String(format.quality);
+  return 'Unknown';
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return 'Unknown';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 function getBestThumbnail(info) {
-  return info.thumbnail ||
-         (info.thumbnails?.sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.url) ||
-         null;
+  if (info.thumbnail) return info.thumbnail;
+  if (info.thumbnails?.length) {
+    return info.thumbnails.reduce((best, current) => 
+      (current.width > (best?.width || 0)) ? current : best
+    ).url;
+  }
+  return null;
 }
 
-const PORT = process.env.PORT || 10000;
+function createFallbackFormat(url) {
+  return {
+    quality: 'Direct',
+    type: url.includes('.mp4') ? 'mp4' : 'm4a',
+    size: 'Unknown',
+    url: url,
+    hasAudio: !url.includes('.mp4'),
+    hasVideo: url.includes('.mp4')
+  };
+}
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    ...(!isProduction && { details: err.message })
+  });
+});
+
 app.listen(PORT, () => {
-  console.log(`\nServer running on port ${PORT}\nReady to process downloads...`);
+  console.log(`
+  Server running on port ${PORT}
+  Environment: ${isProduction ? 'Production' : 'Development'}
+  Ready to process requests...
+  `);
 });
