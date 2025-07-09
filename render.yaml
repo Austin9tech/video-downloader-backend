@@ -1,2 +1,0 @@
-buildCommand: ./build.sh && npm install
-startCommand: node server.js
