@@ -1,14 +1,15 @@
 const express = require('express');
 const cors = require('cors');
+const { path: pathToYtDlp } = require('yt-dlp-bin');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 
-const ytdlpWrap = new YTDlpWrap();
+const ytdlpWrap = new YTDlpWrap(pathToYtDlp);
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Welcome route at /
+// Welcome route
 app.get('/', (req, res) => {
   res.send('✅ Universal Video Downloader API is live! Use /fetch?url=VIDEO_URL');
 });
@@ -24,7 +25,7 @@ app.get('/fetch', async (req, res) => {
   console.log(`Processing: ${videoUrl}`);
 
   try {
-    // Call yt-dlp-wrap
+    // Call yt-dlp-wrap with included binary
     const stdout = await ytdlpWrap.execPromise([
       '--no-check-certificates',
       '--dump-json',
@@ -55,7 +56,7 @@ app.get('/fetch', async (req, res) => {
   }
 });
 
-// Utility to clean formats
+// Process video formats
 function processFormats(info) {
   const formats = (info.formats || [])
     .filter(f => f.url && f.url.startsWith('http'))
@@ -93,7 +94,7 @@ function processFormats(info) {
   return formats;
 }
 
-// Utility to pick best thumbnail
+// Pick best thumbnail
 function getBestThumbnail(info) {
   return info.thumbnail ||
          (info.thumbnails?.sort((a, b) => (b.width || 0) - (a.width || 0))[0]?.url) ||
