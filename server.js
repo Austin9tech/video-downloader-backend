@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { path: pathToYtDlp } = require('yt-dlp-bin');
+const { path: pathToYtDlp } = require('yt-dlp-exec');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 
 const ytdlpWrap = new YTDlpWrap(pathToYtDlp);
