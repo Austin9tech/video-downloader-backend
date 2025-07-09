@@ -1,10 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const YTDlpWrap = require('yt-dlp-wrap').default;
+const ytdlp = require('yt-dlp-exec');
 
-const ytdlpWrap = new YTDlpWrap('./yt-dlp');
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
