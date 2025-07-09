@@ -1,10 +1,14 @@
 const express = require('express');
 const cors = require('cors');
-const ytdlp = require('yt-dlp-exec');
+const path = require('path');
+const YTDlpWrap = require('yt-dlp-wrap').default;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Point to your downloaded yt-dlp binary
+const ytdlpWrap = new YTDlpWrap(path.resolve(__dirname, 'yt-dlp'));
 
 app.get('/fetch', async (req, res) => {
   const videoUrl = req.query.url;
@@ -16,13 +20,15 @@ app.get('/fetch', async (req, res) => {
   console.log(`Processing: ${videoUrl}`);
 
   try {
-    // Use yt-dlp-exec to get video info
-    const info = await ytdlp(videoUrl, {
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-    });
+    const stdout = await ytdlpWrap.execPromise([
+      '--no-check-certificates',
+      '--dump-json',
+      '--format',
+      'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      videoUrl
+    ]);
 
+    const info = JSON.parse(stdout);
     const formats = processFormats(info);
 
     const response = {
@@ -92,8 +98,5 @@ function getBestThumbnail(info) {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`
-  Server running on port ${PORT}
-  Ready to process downloads...
-  `);
+  console.log(`\nServer running on port ${PORT}\nReady to process downloads...`);
 });
