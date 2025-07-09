@@ -23,13 +23,11 @@ app.get('/fetch', async (req, res) => {
 
   try {
     // Call yt-dlp-wrap with included binary
-    const stdout = await ytdlpWrap.execPromise([
-      '--no-check-certificates',
-      '--dump-json',
-      '--format',
-      'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      videoUrl
-    ]);
+    const stdout = await ytdlp(videoUrl, {
+      dumpSingleJson: true,
+      noCheckCertificates: true,
+      format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+    });
 
     const info = JSON.parse(stdout);
     const formats = processFormats(info);
