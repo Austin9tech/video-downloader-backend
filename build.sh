@@ -1,10 +1,5 @@
 #!/bin/bash
-# Install Python and required tools
-apt-get update
-apt-get install -y python3 python3-pip ffmpeg
-
-# Install yt-dlp with pip
-python3 -m pip install --upgrade yt-dlp
-
-# Install Node.js dependencies
-npm install
+echo "🔽 Downloading yt-dlp binary..."
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
+chmod +x yt-dlp
+echo "✅ yt-dlp ready!"
