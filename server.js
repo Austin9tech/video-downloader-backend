@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -13,6 +14,7 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
+// Modified to use Python-installed yt-dlp
 app.get('/fetch', (req, res) => {
   const { url } = req.query;
   
@@ -22,7 +24,8 @@ app.get('/fetch', (req, res) => {
 
   console.log(`Processing: ${url}`);
   
-  const command = `yt-dlp --dump-json --no-check-certificates "${url}"`;
+  // Using python3 -m yt_dlp instead of direct binary
+  const command = `python3 -m yt_dlp --dump-json --no-check-certificates "${url}"`;
 
   exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
     if (error) {
